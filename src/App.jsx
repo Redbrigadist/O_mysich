@@ -1123,9 +1123,7 @@ ns.log=[...ns.log,{t:ns.turn,msg:`Průzkum — ${terrainOutcome.title}`,good:ter
   if(counts["rest"]>0)ns.morale=clamp(ns.morale+counts["rest"]*4,0,100);
   const wb=allB.find(b=>b.id==="watchpost"&&b.built)?3:1.5;
   if(counts["watch"]>0&&!outdoorBlocked)ns.threat=Math.max(0,ns.threat-counts["watch"]*wb);
-  // Starý crafting (zásoby→jídlo+dřevo)
-  if(counts["craft"]>0&&hasBldg(ns,"workshop")){const u=Math.min(ns.mats,counts["craft"]*2);ns.mats-=u;ns.wood=clamp(ns.wood+Math.floor(u/2),0,ns.woodCap);ns.food=clamp(ns.food+Math.floor(u/2),0,ns.foodCap);}
-  // Nový crafting předmětů
+  // Crafting předmětů — má přednost
   if(ns.craftQueue&&counts["craft"]>0){
     const item=CRAFT_ITEMS.find(i=>i.id===ns.craftQueue);
     const hasReq=!item?.req||hasBldg(ns,item.req);
@@ -1137,29 +1135,15 @@ ns.log=[...ns.log,{t:ns.turn,msg:`Průzkum — ${terrainOutcome.title}`,good:ter
       ns.comfortPts=(ns.comfortPts||0)+item.comfort;
       if(item.morale)ns.morale=clamp(ns.morale+item.morale,0,100);
       ns.craftedItems=[...(ns.craftedItems||[]),item.id];
-      // Zkontroluj upgrade pohodlí
       const prevLevel=getComfortLevel(prevPts);
       const newLevel=getComfortLevel(ns.comfortPts);
-      const levelMsg=newLevel.level>prevLevel.level
-        ?` Nora postoupila na: ${newLevel.name}!`:"";
+      const levelMsg=newLevel.level>prevLevel.level?` Nora postoupila na: ${newLevel.name}!`:"";
       ns.log=[...ns.log,{t:ns.turn,msg:`${item.icon} ${item.name} dokončena. +${item.comfort} pohodlí.${levelMsg}`,good:true,title:item.name,lore:item.flavor}];
       ns.craftQueue=null;
     }
+  } else if(counts["craft"]>0&&hasBldg(ns,"workshop")){
+    const u=Math.min(ns.mats,counts["craft"]*2);ns.mats-=u;ns.wood=clamp(ns.wood+Math.floor(u/2),0,ns.woodCap);ns.food=clamp(ns.food+Math.floor(u/2),0,ns.foodCap);
   }
-  const active=ns.mice.filter(m=>!m.lost).length;const eat=active-(p.includes("strict_ration")?2:0)-(p.includes("communal")?1:0);const dry=allB.find(b=>b.id==="dryroom"&&b.built)?1:0;ns.food=clamp(ns.food-eat+dry,0,ns.foodCap);
-  s.mice.forEach(m=>{if(m.trait==="cheerful"&&!m.lost)ns.morale=clamp(ns.morale+0.5,0,100);});
-  // Aging perk pasivní efekty
-  s.mice.forEach(m=>{
-    if(m.lost)return;
-    if(m.agingPerk==="calm_presence")ns.morale=clamp(ns.morale+1,0,100);
-    if(m.agingPerk==="iron_stomach")ns.food=clamp(ns.food+0.5,0,ns.foodCap);
-    if(m.agingPerk==="keeper_of_lore")ns.morale=clamp(ns.morale+ns.policies.length*0.5,0,100);
-    if(m.agingPerk==="loud_joints"&&a[m.id]==="explore")ns.threat=clamp(ns.threat+0.5,0,10);
-    // Forgetful: 1x za 5 tahů přiřazená akce selže
-    if(m.agingPerk==="forgetful"&&ns.turn%5===0&&a[m.id]){
-      ns.log=[...ns.log,{t:ns.turn,msg:`${m.name} zapomněla co měla dělat.`,good:false,title:"Zapomnětlivost",lore:"Stojí uprostřed nory s prázdnýma rukama a neví proč tam stojí."}];
-    }
-  });
   // Počasí pasivní
   if(weather){
     ns.morale=clamp(ns.morale+weather.moraleMod,0,100);
