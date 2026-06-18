@@ -1571,7 +1571,7 @@ function VillageTab({s,availActions,assign}){
           {availActions.map(act=>(<InkBtn key={act.id} active={s.assignments[m.id]===act.id} disabled={(m.injured&&act.id!=="rest")||isBlocked} onClick={()=>assign(m.id,act.id)} style={{fontSize:12,padding:"6px 10px"}}>{act.glyph} {act.label}</InkBtn>))}
         </div>
       </ArtCard>);})}
-    {s.mice.filter(m=>m.lost).map(m=>(<InkBox key={m.id} style={{marginBottom:9,opacity:0.7}} fill={C.parchmentDark}><div style={{display:"flex",alignItems:"center",gap:10}}><MouseSVG injured={false} lost={true}/><div><div style={{display:"flex",gap:7,alignItems:"center",marginBottom:3}}><Title size={15}>{m.name}</Title><span style={{fontFamily:sansInk,fontSize:12,fontWeight:"bold",color:C.gold,padding:"2px 8px",border:`2px solid ${C.gold}`}}>pryč</span></div><Label style={{fontSize:12}}>{m.lostReason} — vrátí se za ~{m.lostTurns} {m.lostTurns===1?"tah":m.lostTurns<5?"tahy":"tahů"}</Label></div></div></ArtCard>))}
+    {s.mice.filter(m=>m.lost).map(m=>(<ArtCard key={m.id} style={{marginBottom:9,opacity:0.65}}><div style={{display:"flex",alignItems:"center",gap:10}}><MouseSVG injured={false} lost={true}/><div><div style={{display:"flex",gap:7,alignItems:"center",marginBottom:3}}><Title size={15}>{m.name}</Title><span style={{fontFamily:sansInk,fontSize:12,fontWeight:"bold",color:C.gold,padding:"2px 8px",border:`2px solid ${C.gold}`}}>pryč</span></div><Label style={{fontSize:12}}>{m.lostReason} — vrátí se za ~{m.lostTurns} {m.lostTurns===1?"tah":m.lostTurns<5?"tahy":"tahů"}</Label></div></div></ArtCard>))}
   </div>);}
 
 function BuildTab({s,onQueue,onQueueCraft}){
@@ -2094,7 +2094,7 @@ export default function App(){
     {s.phase==="story"&&s.pendingStory&&(
       s.storyPage?.choices
         ?<StoryModal s={s} onChoice={resolveStory} onNext={()=>{}}/>
-        :<Modal wide>
+        :<ArtModal wide>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingBottom:12,borderBottom:`2px solid ${C.stain}`}}>
             <div style={{fontFamily:sansInk,fontSize:9,fontWeight:"bold",letterSpacing:"0.2em",color:C.inkGhost}}>{s.pendingStory.source==="character"?"— PŘÍBĚH Z NORY —":"— PŘÍBĚH ZE SVĚTA —"}</div>
             <div style={{fontFamily:inkFont,fontSize:20,fontWeight:"bold",fontStyle:"italic",color:C.ink,flex:1,textAlign:"center"}}>{s.pendingStory.title}</div>
