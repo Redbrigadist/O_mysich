@@ -11,10 +11,24 @@ const C = {
 const inkFont  = "'Georgia','Times New Roman',serif";
 const sansInk  = "'Courier New','Lucida Console',monospace";
 
+// ── Hexagonální mapa — konstanty ──────────────────────────────────────────────
+const HS=26, HCOLS=13, HROWS=9;
+const VH={c:6,r:4};
+
 // ── Persistence ───────────────────────────────────────────────────────────────
 const SAVE_KEY = "omysichaozime_v2";
-const saveGame   = st => { try { window.storage.set(SAVE_KEY, JSON.stringify(st)); } catch(e) {} };
-const deleteSave = async () => { try { await window.storage.delete(SAVE_KEY); } catch(e) {} };
+const saveGame = st => {
+  try {
+    if(window.storage) window.storage.set(SAVE_KEY, JSON.stringify(st));
+    else localStorage.setItem(SAVE_KEY, JSON.stringify(st));
+  } catch(e) {}
+};
+const deleteSave = async () => {
+  try {
+    if(window.storage) await window.storage.delete(SAVE_KEY);
+    else localStorage.removeItem(SAVE_KEY);
+  } catch(e) {}
+};
 
 // ── Lore generátor ────────────────────────────────────────────────────────────
 const PRIJMENI  = ["Zrnko","Podkůvka","Ostružina","Chvostík","Březinka","Šišák","Pýřek","Hlízka","Stébélko","Kořínek","Lupínek","Klásek","Trnůvka","Žaludík","Bobulka","Mecháček","Větvička","Ořešník","Semenec","Plísněnka","Hřibůvka","Slamník"];
@@ -51,8 +65,13 @@ function migrateMice(mice) {
 }
 const loadGame = async () => {
   try {
-    const r = await window.storage.get(SAVE_KEY);
-    if (r?.value) { const d = JSON.parse(r.value); return { ...d, mice:migrateMice(d.mice) }; }
+    if(window.storage){
+      const r = await window.storage.get(SAVE_KEY);
+      if(r?.value){ const d=JSON.parse(r.value); return{...d,mice:migrateMice(d.mice)}; }
+    } else {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if(raw){ const d=JSON.parse(raw); return{...d,mice:migrateMice(d.mice)}; }
+    }
   } catch(e) {}
   return null;
 };
@@ -73,12 +92,81 @@ function getActiveWinter(turn){
   for(const ph of WINTER_PHASES){if(turn>=ph.turn)active=ph;}
   return active;
 }
+// ── Herní helper funkce ───────────────────────────────────────────────────────
+function getSeason(t){
+  if(t<=15)return{name:"Začátek podzimu",tg:0.8,ebc:0.18,label:"Začátek podzimu — dny jsou ještě teplé"};
+  if(t<=30)return{name:"Konec podzimu",tg:1.2,ebc:0.25,label:"Konec podzimu — noci chladnou"};
+  if(t<=39)return{name:"Předzimí",tg:1.8,ebc:0.35,label:"Předzimí — mráz na kořenech"};
+  if(t<=44)return{name:"První mráz",tg:1.5,ebc:0.3,label:"První mráz — tráva křupe pod nohama"};
+  if(t<=49)return{name:"Sněžení",tg:1.2,ebc:0.25,label:"Sněžení — vchod je napůl zaválen"};
+  return{name:"Velké zamrznutí",tg:1.0,ebc:0.2,label:"Velké zamrznutí — toto je ta zima"};
+}
+function getStoryEvent(turn){return STORY_EVENTS.find(e=>e.turn===turn)||null;}
+function getTerrainLore(terrain){const p=TERRAIN_LORE[terrain]||TERRAIN_LORE.forest;return p[Math.floor(Math.random()*p.length)];}
+function nearestUnrevealedHex(hexMap){
+  const revealed=new Set(hexMap.revealed||[]),visited=new Set(),queue=[{c:VH.c,r:VH.r}];
+  visited.add(`${VH.c},${VH.r}`);
+  while(queue.length){const{c,r}=queue.shift(),key=`${c},${r}`;if(!revealed.has(key))return{c,r};for(const nb of hneighbours(c,r)){const nk=`${nb.c},${nb.r}`;if(!visited.has(nk)){visited.add(nk);queue.push(nb);}}}
+  return null;
+}
+
 
 function effectSummary(o){
   const p=[];if(o.food>0)p.push(`+${o.food} jídla`);if(o.food<0)p.push(`${o.food} jídla`);if(o.wood>0)p.push(`+${o.wood} dřeva`);if(o.wood<0)p.push(`${o.wood} dřeva`);if(o.mats>0)p.push(`+${o.mats} zásob`);if(o.mats<0)p.push(`${o.mats} zásob`);if(o.morale>0)p.push(`morálka +${o.morale}`);if(o.morale<0)p.push(`morálka ${o.morale}`);if(o.threat>0)p.push(`hrozba +${o.threat}`);if(o.threat<0)p.push(`hrozba ${o.threat}`);if(o.special==="injure")p.push("jedna myš zraněna");if(o.special==="add_mouse")p.push("myš se přidá");
   return p.length?p.join(", "):"Žádný herní efekt.";
 }
 function pickBlockedMouse(mice){const e=mice.filter(m=>!m.lost);if(!e.length)return null;return pick(e).id;}
+
+// ── Helper funkce ─────────────────────────────────────────────────────────────
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
+const clamp=(v,mn,mx)=>Math.min(mx,Math.max(mn,v));
+const Effects={
+  food:   n=>s=>({...s,food:  clamp(s.food  +n,0,s.foodCap)}),
+  wood:   n=>s=>({...s,wood:  clamp(s.wood  +n,0,s.woodCap)}),
+  mats:   n=>s=>({...s,mats:  clamp(s.mats  +n,0,s.matsCap)}),
+  morale: n=>s=>({...s,morale:clamp(s.morale+n,0,100)}),
+  threat: n=>s=>({...s,threat:clamp(s.threat+n,0,10)}),
+  compose:(...fns)=>s=>fns.reduce((a,f)=>f(a),s),
+  fromData:d=>s=>{let ns=s;if(d.food)ns=Effects.food(d.food)(ns);if(d.wood)ns=Effects.wood(d.wood)(ns);if(d.mats)ns=Effects.mats(d.mats)(ns);if(d.morale)ns=Effects.morale(d.morale)(ns);if(d.threat)ns=Effects.threat(d.threat)(ns);return ns;},
+};
+function injureRandom(s,severity="minor"){
+  const ok=s.mice.filter(m=>!m.injured&&!m.lost);if(!ok.length)return s;
+  const t=ok[Math.floor(Math.random()*ok.length)];
+  const pen=severity==="serious"?10:5;
+  const injuryCount=(t.history||[]).filter(h=>h.includes("zranění")||h.includes("Zraněna")).length;
+  let mice=s.mice.map(m=>m.id===t.id?{...m,injured:true,history:[...(m.history||[]),severity==="serious"?"Těžce zraněna":"Utrpěla zranění"]}:m);
+  if(injuryCount>=1&&!t.epithet){const ep=getEpithet("survived_injury");if(ep){const newFull=`${t.name} ${ep}`;mice=mice.map(m=>m.id===t.id?{...m,epithet:ep,fullName:newFull}:m);}}
+  return{...s,mice,morale:Math.max(0,s.morale-pen)};
+}
+function traitBonus(trait,action){
+  if(action==="forage"&&trait==="green")return 1;if(action==="forage"&&trait==="forager")return 1.5;if(action==="forage"&&trait==="greedy")return -0.5;
+  if(action==="explore"&&trait==="brave")return 1;if(action==="explore"&&trait==="swift")return 2;if(action==="explore"&&trait==="nervous")return -1;
+  if(action==="haul"&&trait==="stocky")return 1;return 0;
+}
+function agingBonus(perk,action){
+  if(!perk)return 0;
+  if(perk==="veteran_scout"&&action==="explore")return 1;
+  if(perk==="master_forager"&&action==="forage")return 1.5;
+  if(perk==="night_eyes"&&action==="watch")return 1;
+  if(perk==="set_in_ways"&&action==="explore")return -0.5;
+  if(perk==="loud_joints"&&action==="explore")return -0.5;
+  return 0;
+}
+function getRandomAgingPerk(existingTrait){const available=AGING_PERKS.filter(p=>p.id!==existingTrait);return available[Math.floor(Math.random()*available.length)];}
+function getEpithet(occasion){const pool=EPITHETS[occasion];if(!pool)return null;return pool[Math.floor(Math.random()*pool.length)];}
+function pickWeighted(outcomes,s){const res=outcomes.map(o=>({...o,wv:typeof o.w==="function"?o.w(s):o.w}));const tot=res.reduce((a,o)=>a+o.wv,0);if(tot<=0)return res[0];let r=Math.random()*tot;for(const o of res){r-=o.wv;if(r<=0)return o;}return res[res.length-1];}
+function getAllBuildings(s){return[...s.buildings,...(s.extraBuildings||[])];}
+function hasBldg(s,id){return getAllBuildings(s).find(b=>b.id===id)?.built;}
+function applyOutcome(s,outcome){let ns=Effects.fromData(outcome)(s);if(outcome.special==="injure")ns=injureRandom(ns,"minor");if(outcome.special==="add_mouse"&&s.mice.length<8){const nm=mkMouse();ns={...ns,mice:[...ns.mice,nm]};}return ns;}
+function mkMouse(fixedName){
+  const name=fixedName||pick(MOUSE_NAMES);
+  const ld=STARTER_LORE[name]??generateLore(name);
+  return{id:Math.random().toString(36).slice(2),name,fullName:ld.fullName,lore:ld.text,trait:pick(TRAITS).id,agingPerk:null,epithet:null,actionTurns:0,injured:false,lost:false,lostTurns:0,lostReason:"",onExpedition:false,history:[]};
+}
+function getComfortLevel(pts){for(let i=COMFORT_LEVELS.length-1;i>=0;i--){if(pts>=COMFORT_THRESHOLDS[i])return COMFORT_LEVELS[i];}return COMFORT_LEVELS[0];}
+function getNextComfortThreshold(pts){for(let i=0;i<COMFORT_THRESHOLDS.length;i++){if(pts<COMFORT_THRESHOLDS[i])return{threshold:COMFORT_THRESHOLDS[i],level:COMFORT_LEVELS[i]};}return null;}
+function pickWeather(){return WEATHER_TYPES[Math.floor(Math.random()*WEATHER_TYPES.length)];}
+function newWeatherDuration(w){const[mn,mx]=w.duration;return mn+Math.floor(Math.random()*(mx-mn+1));}
 
 function initState(){
   const mice=[mkMouse("Lopuch"),mkMouse("Jetel"),mkMouse("Ostružina"),mkMouse("Kopřiva")];
@@ -538,6 +626,7 @@ function Body({children,style={}}){return<div style={{fontFamily:inkFont,fontSiz
 function MouseSVG({injured,lost}){return<svg width="36" height="36" viewBox="0 0 34 34"><ellipse cx="17" cy="21" rx="11" ry="8" fill={C.parchment} stroke={C.ink} strokeWidth="1.5"/><circle cx="17" cy="13" r="7" fill={C.parchment} stroke={C.ink} strokeWidth="1.5"/><ellipse cx="10" cy="8" rx="3.5" ry="6" fill={C.parchment} stroke={C.ink} strokeWidth="1.2" transform="rotate(-18 10 8)"/><ellipse cx="24" cy="8" rx="3.5" ry="6" fill={C.parchment} stroke={C.ink} strokeWidth="1.2" transform="rotate(18 24 8)"/><circle cx="14.5" cy="13" r="1.2" fill={C.ink}/><circle cx="19.5" cy="13" r="1.2" fill={C.ink}/><path d="M14.5 17 Q17 19 19.5 17" fill="none" stroke={C.ink} strokeWidth="1.2"/>{injured&&<path d="M5 5 L29 29 M29 5 L5 29" stroke={C.red} strokeWidth="1.5" opacity="0.45"/>}{lost&&<path d="M17 5 L17 29 M5 17 L29 17" stroke={C.gold} strokeWidth="1.5" opacity="0.55"/>}</svg>;}
 
 // ── Hex Map ───────────────────────────────────────────────────────────────────
+function hneighbours(c,r){const e=c%2===0;return[{c:c-1,r:e?r-1:r},{c:c-1,r:e?r:r+1},{c,r:r-1},{c,r:r+1},{c:c+1,r:e?r-1:r},{c:c+1,r:e?r:r+1}].filter(h=>h.c>=0&&h.r>=0&&h.c<HCOLS&&h.r<HROWS);}
 function hcenter(c,r){return{x:HS*1.75*c+36,y:HS*Math.sqrt(3)*(r+(c%2)*0.5)+36};}
 function hcorners(cx,cy,r=HS){return Array.from({length:6},(_,i)=>{const a=Math.PI/180*(60*i);return`${cx+r*Math.cos(a)},${cy+r*Math.sin(a)}`;}).join(" ");}
 function hterrain(c,r){const v=(c*7+r*13)%17;if(v<3)return"water";if(v<6)return"dense";if(v<9)return"meadow";return"forest";}
