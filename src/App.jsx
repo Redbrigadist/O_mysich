@@ -80,6 +80,57 @@ function effectSummary(o){
 }
 function pickBlockedMouse(mice){const e=mice.filter(m=>!m.lost);if(!e.length)return null;return pick(e).id;}
 
+// ── Helper funkce ─────────────────────────────────────────────────────────────
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
+const clamp=(v,mn,mx)=>Math.min(mx,Math.max(mn,v));
+const Effects={
+  food:   n=>s=>({...s,food:  clamp(s.food  +n,0,s.foodCap)}),
+  wood:   n=>s=>({...s,wood:  clamp(s.wood  +n,0,s.woodCap)}),
+  mats:   n=>s=>({...s,mats:  clamp(s.mats  +n,0,s.matsCap)}),
+  morale: n=>s=>({...s,morale:clamp(s.morale+n,0,100)}),
+  threat: n=>s=>({...s,threat:clamp(s.threat+n,0,10)}),
+  compose:(...fns)=>s=>fns.reduce((a,f)=>f(a),s),
+  fromData:d=>s=>{let ns=s;if(d.food)ns=Effects.food(d.food)(ns);if(d.wood)ns=Effects.wood(d.wood)(ns);if(d.mats)ns=Effects.mats(d.mats)(ns);if(d.morale)ns=Effects.morale(d.morale)(ns);if(d.threat)ns=Effects.threat(d.threat)(ns);return ns;},
+};
+function injureRandom(s,severity="minor"){
+  const ok=s.mice.filter(m=>!m.injured&&!m.lost);if(!ok.length)return s;
+  const t=ok[Math.floor(Math.random()*ok.length)];
+  const pen=severity==="serious"?10:5;
+  const injuryCount=(t.history||[]).filter(h=>h.includes("zranění")||h.includes("Zraněna")).length;
+  let mice=s.mice.map(m=>m.id===t.id?{...m,injured:true,history:[...(m.history||[]),severity==="serious"?"Těžce zraněna":"Utrpěla zranění"]}:m);
+  if(injuryCount>=1&&!t.epithet){const ep=getEpithet("survived_injury");if(ep){const newFull=`${t.name} ${ep}`;mice=mice.map(m=>m.id===t.id?{...m,epithet:ep,fullName:newFull}:m);}}
+  return{...s,mice,morale:Math.max(0,s.morale-pen)};
+}
+function traitBonus(trait,action){
+  if(action==="forage"&&trait==="green")return 1;if(action==="forage"&&trait==="forager")return 1.5;if(action==="forage"&&trait==="greedy")return -0.5;
+  if(action==="explore"&&trait==="brave")return 1;if(action==="explore"&&trait==="swift")return 2;if(action==="explore"&&trait==="nervous")return -1;
+  if(action==="haul"&&trait==="stocky")return 1;return 0;
+}
+function agingBonus(perk,action){
+  if(!perk)return 0;
+  if(perk==="veteran_scout"&&action==="explore")return 1;
+  if(perk==="master_forager"&&action==="forage")return 1.5;
+  if(perk==="night_eyes"&&action==="watch")return 1;
+  if(perk==="set_in_ways"&&action==="explore")return -0.5;
+  if(perk==="loud_joints"&&action==="explore")return -0.5;
+  return 0;
+}
+function getRandomAgingPerk(existingTrait){const available=AGING_PERKS.filter(p=>p.id!==existingTrait);return available[Math.floor(Math.random()*available.length)];}
+function getEpithet(occasion){const pool=EPITHETS[occasion];if(!pool)return null;return pool[Math.floor(Math.random()*pool.length)];}
+function pickWeighted(outcomes,s){const res=outcomes.map(o=>({...o,wv:typeof o.w==="function"?o.w(s):o.w}));const tot=res.reduce((a,o)=>a+o.wv,0);if(tot<=0)return res[0];let r=Math.random()*tot;for(const o of res){r-=o.wv;if(r<=0)return o;}return res[res.length-1];}
+function getAllBuildings(s){return[...s.buildings,...(s.extraBuildings||[])];}
+function hasBldg(s,id){return getAllBuildings(s).find(b=>b.id===id)?.built;}
+function applyOutcome(s,outcome){let ns=Effects.fromData(outcome)(s);if(outcome.special==="injure")ns=injureRandom(ns,"minor");if(outcome.special==="add_mouse"&&s.mice.length<8){const nm=mkMouse();ns={...ns,mice:[...ns.mice,nm]};}return ns;}
+function mkMouse(fixedName){
+  const name=fixedName||pick(MOUSE_NAMES);
+  const ld=STARTER_LORE[name]??generateLore(name);
+  return{id:Math.random().toString(36).slice(2),name,fullName:ld.fullName,lore:ld.text,trait:pick(TRAITS).id,agingPerk:null,epithet:null,actionTurns:0,injured:false,lost:false,lostTurns:0,lostReason:"",onExpedition:false,history:[]};
+}
+function getComfortLevel(pts){for(let i=COMFORT_LEVELS.length-1;i>=0;i--){if(pts>=COMFORT_THRESHOLDS[i])return COMFORT_LEVELS[i];}return COMFORT_LEVELS[0];}
+function getNextComfortThreshold(pts){for(let i=0;i<COMFORT_THRESHOLDS.length;i++){if(pts<COMFORT_THRESHOLDS[i])return{threshold:COMFORT_THRESHOLDS[i],level:COMFORT_LEVELS[i]};}return null;}
+function pickWeather(){return WEATHER_TYPES[Math.floor(Math.random()*WEATHER_TYPES.length)];}
+function newWeatherDuration(w){const[mn,mx]=w.duration;return mn+Math.floor(Math.random()*(mx-mn+1));}
+
 function initState(){
   const mice=[mkMouse("Lopuch"),mkMouse("Jetel"),mkMouse("Ostružina"),mkMouse("Kopřiva")];
   mice[0].trait="brave";mice[1].trait="green";mice[2].trait="stocky";mice[3].trait="cheerful";
